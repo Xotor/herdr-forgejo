@@ -192,6 +192,10 @@ def board(ctx, token, primary=None):
              ('prs', 'pulls', {'state': 'all', 'sort': 'recentupdate'}, 100), ('actions', 'actions/runs', {}, 10)]
     if primary:
         specs = [(kind, suffix, params, 2) for kind, suffix, params, pages in specs if kind == primary]
+        if primary == 'prs':
+            # Show current CI together with the first PR page, without waiting
+            # for all repository history to be indexed.
+            specs.append(('actions', 'actions/runs', {}, 1))
     pool = ThreadPoolExecutor(max_workers=4)
     pending = {kind: pool.submit(collection, ctx, token, suffix, params, pages) for kind, suffix, params, pages in specs}
     if primary != 'actions':

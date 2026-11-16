@@ -216,6 +216,8 @@ export default class Issues extends View {
           .when(this.kind === 'prs' && Boolean(i.action_runs?.length), el => el.child(v_flex().gap(4).children(i.action_runs.map(action =>
             this.button(`pr-${i.number}-action-${action.number}`, `${action.workflow || action.title || 'Action'} #${action.number} · ${action.state}`,
               cx => this.relatedTo(i, 'actions', action.number), false, this.statusColor(action.state, t))))))
+          .when(this.kind === 'prs' && !i.action_runs?.length, el => el.child(div().text_size(11).text_color(t.dim)
+            .child(this.enriching ? 'Actions: no recent match · checking history…' : 'Actions: no linked run found in loaded history')))
           .child(h_flex().flex_wrap().gap(6).items_center().text_size(11)
             .child(div().px(7).py(2).rounded(10).border_1().border_color(this.statusColor(i.state, t))
               .text_color(this.statusColor(i.state, t)).child(i.state))
