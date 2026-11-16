@@ -13,6 +13,13 @@ export default class Fixture extends Panel {
   get kind() { return 'KIND'; }
   init(p, cx) {
     super.init(p, cx);
+    this.serial = 1; this.loading = true; this.deadline = 10;
+    this.checkDeadline(cx, 20);
+    if (this.loading || this.enriching || this.serial !== 2 || !this.error) throw new Error('Loading deadline failed');
+    this.data = {issues:[]}; this.enriching = true;
+    this.checkDeadline(cx, 20);
+    if (this.enriching || !this.data || !this.error.includes('loaded list')) throw new Error('Enrichment deadline lost primary list');
+    this.error = null;
     this.context = {key:'demo/repo', base:'https://example.invalid', repo:'demo/repo'};
     const row = {number:12, title:'Example item', labels:['Ready','frontend'], assignees:[],
       state: this.kind === 'actions' ? 'success' : 'open', detail:'ci.yml · main',

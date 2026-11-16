@@ -27,7 +27,15 @@ export default class Issues extends View {
     this.error = null;
     if (checking() || props()?.button) return;
     this.refresh(cx);
-    cx.timer.every(30000, cx => { if (this.visible()) this.refresh(cx, true); });
+    cx.timer.every(30000, cx => { if (this.visible() && !this.error) this.refresh(cx, true); });
+    cx.timer.every(5000, cx => this.checkDeadline(cx));
+  }
+  checkDeadline(cx, now = Date.now()) {
+    if ((this.loading || this.enriching) && now > this.deadline) {
+      this.serial++; this.loading = false; this.enriching = false;
+      this.error = this.data ? "Link lookup timed out. Showing the loaded list; use Refresh to retry." : "Loading timed out. Check the connection and use Refresh to retry.";
+      cx.notify();
+    }
   }
   visible() { const root = layout(); return !find(root, "panel")?.hidden && find(root, "panel-body")?.active === this.modName; }
   refresh(cx, force = false) {
@@ -35,19 +43,20 @@ export default class Issues extends View {
     const loc = location(), next = JSON.stringify(loc);
     if (next !== this.locationKey) {
       this.locationKey = next; this.serial = (this.serial ?? 0) + 1;
-      this.context = null; this.data = null; this.error = null; this.loading = false;
+      this.context = null; this.data = null; this.error = null; this.loading = false; this.enriching = false;
       this.tags.clear();
       this.related = null;
     }
-    if (!loc.cwd || this.loading) return;
+    if (!loc.cwd || this.loading || this.enriching) return;
     this.loading = true;
+    this.error = null; this.deadline = Date.now() + 60000;
     const serial = this.serial;
     cx.spawn(async cx => {
       const call = async mode => {
         const helper = appHome() + "/mods/" + this.modName + "/backend.py";
         const args = loc.on ? ["-c", await readTextFile(helper), mode, loc.cwd] : [helper, mode, loc.cwd];
         const result = await exec(loc.on || window()?.platform !== "windows" ? "python3" : "python",
-          args, { on: loc.on, timeout: 120000 });
+          args, { on: loc.on, timeout: mode === "context" ? 15000 : 55000 });
         if (result.code !== 0) throw new Error("Forgejo helper could not run.");
         const data = JSON.parse(result.stdout);
         if (data.error) throw new Error(data.error);
@@ -57,9 +66,17 @@ export default class Issues extends View {
         const context = await call("context");
         if (this.serial !== serial) return;
         this.context = context;
+        cx.notify();
         const cached = cache.get(context.key);
         if (cached) this.data = cached;
         if (force || !cached || Date.now() - cached.time > 30000) {
+          if (!cached) {
+            const primary = await call("panel:" + this.kind);
+            if (this.serial !== serial) return;
+            this.data = primary; this.context = primary; this.loading = false;
+            cx.notify();
+          }
+          this.enriching = true; this.deadline = Date.now() + 60000;
           const data = await call("board");
           data.time = Date.now(); cache.set(context.key, data);
           if (this.serial !== serial) return;
@@ -67,7 +84,7 @@ export default class Issues extends View {
         }
         this.error = null;
       } catch (e) { if (this.serial === serial) this.error = String(e.message ?? e); }
-      finally { if (this.serial === serial) this.loading = false; cx.notify(); }
+      finally { if (this.serial === serial) { this.loading = false; this.enriching = false; } cx.notify(); }
     });
   }
   button(id, label, action, active = false, color = null) {
@@ -114,9 +131,7 @@ export default class Issues extends View {
         else { run("layout.select", { stack: "panel-body", child: this.modName }); run("layout.show", { id: "panel" }); }
       }));
     const loc = JSON.stringify(location());
-    if (!checking() && (loc !== this.locationKey || (this.visible() && Date.now() - (this.checkedAt ?? 0) > 5000))) {
-      this.checkedAt = Date.now(); this.refresh(cx);
-    }
+    if (!checking() && loc !== this.locationKey) this.refresh(cx);
     const nav = shared("forgejo.navigate");
     if (nav?.kind === this.kind && nav.key === this.context?.key && nav.stamp !== this.navStamp) {
       this.navStamp = nav.stamp; this.related = nav; this.state = "all"; this.tags.clear();
@@ -142,6 +157,7 @@ export default class Issues extends View {
       .child(h_flex().h(42).flex_none().px(10).gap(8).items_center()
         .child(div().flex_1().font_semibold().child("Forgejo " + this.title))
         .child(this.button("refresh", this.loading ? "Loading..." : "Refresh", cx => this.refresh(cx, true))))
+      .when(Boolean(this.enriching), el => el.child(div().px(10).pb(5).text_size(11).text_color(t.dim).child("Loading history and related items...")))
       .child(div().px(10).pb(6).text_color(t.muted).child(this.context ? this.context.repo : "Follow focused repository"))
       .child(h_flex().px(8).py(6).gap(5).items_center().flex_wrap().flex_none()
         .children(states.map(state => this.button(state, state,

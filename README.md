@@ -50,6 +50,8 @@ PR title/body references to existing issues create bidirectional links, labelled
 
 Links cover fetched records only: at most 5,000 issues, 5,000 PRs and the latest 500 runs. The footer shows `+` when that panel's result limit is reached. Some older servers or tokens cannot list Actions; partial failures are shown while the other data stays usable. Separate datasets fetch in parallel. No merge/rerun/cancel buttons are provided.
 
+Initial loading first shows up to 100 recently updated items from the selected panel. History and links load separately in the background. Until that finishes, sorting/filtering covers the initial subset and the footer shows `+`. A failed or timed-out history lookup keeps the loaded list, shows an error and waits for manual Refresh instead of restarting on every redraw.
+
 ## Access and storage
 
 The mod runs Git and a Python helper, reads `.env` outside its own folder, and makes authenticated read-only HTTPS requests to Forgejo. Remote execution goes through Herdr. Credentials stay inside the helper, are not passed in command arguments, and are not printed or cached. HTTP redirects are refused. Issue data is cached in memory only. Browsing launches the local default browser; no issues are edited or posted.

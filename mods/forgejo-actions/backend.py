@@ -11,7 +11,7 @@ from urllib.error import HTTPError, URLError
 
 
 def git(cwd, *args):
-    p = subprocess.run(['git', '-C', str(cwd), *args], capture_output=True, encoding='utf-8', errors='strict')
+    p = subprocess.run(['git', '-C', str(cwd), *args], capture_output=True, encoding='utf-8', errors='strict', timeout=10)
     if p.returncode:
         raise ValueError('The focused folder is not an available Git repository.')
     return p.stdout.strip()
@@ -115,6 +115,12 @@ def issues(ctx, token):
 
 def main():
     ctx, token = context(sys.argv[2])
+    if sys.argv[1].startswith('panel:'):
+        kind = sys.argv[1].split(':', 1)[1]
+        if kind not in ('issues', 'prs', 'actions'):
+            raise ValueError('Unknown panel.')
+        print(json.dumps(ctx | board(ctx, token, primary=kind), ensure_ascii=True))
+        return
     if sys.argv[1] == 'board':
         print(json.dumps(ctx | board(ctx, token), ensure_ascii=True))
         return
@@ -176,14 +182,17 @@ def link_graph(issue_rows, pulls, runs):
         pr.pop('_shas', None)
 
 
-def board(ctx, token):
+def board(ctx, token, primary=None):
     warnings = []
     output = {'issues': [], 'prs': [], 'actions': [], 'labels': [], 'limited': False, 'limits': {}}
-    specs = [('issues', 'issues', {'state': 'all', 'type': 'issues'}, 100),
-             ('prs', 'pulls', {'state': 'all'}, 100), ('actions', 'actions/runs', {}, 10)]
+    specs = [('issues', 'issues', {'state': 'all', 'type': 'issues', 'sort': 'recentupdate'}, 100),
+             ('prs', 'pulls', {'state': 'all', 'sort': 'recentupdate'}, 100), ('actions', 'actions/runs', {}, 10)]
+    if primary:
+        specs = [(kind, suffix, params, 2) for kind, suffix, params, pages in specs if kind == primary]
     pool = ThreadPoolExecutor(max_workers=4)
     pending = {kind: pool.submit(collection, ctx, token, suffix, params, pages) for kind, suffix, params, pages in specs}
-    pending['labels'] = pool.submit(collection, ctx, token, 'labels')
+    if primary != 'actions':
+        pending['labels'] = pool.submit(collection, ctx, token, 'labels')
     for kind, suffix, params, pages in specs:
         try:
             raw, limited = pending[kind].result()
@@ -234,7 +243,7 @@ def board(ctx, token):
         except ValueError as error:
             warnings.append(kind + ': ' + str(error))
     try:
-        labels, _ = pending['labels'].result()
+        labels, _ = pending['labels'].result() if 'labels' in pending else ([], False)
         output['labels'] = [x['name'] for x in labels]
     except ValueError as error:
         warnings.append('labels: ' + str(error))
