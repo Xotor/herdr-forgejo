@@ -11,6 +11,7 @@ A compact, read-only Forgejo browser for Herdr's side panel, with separate Issue
 - Ready labels are green, In Progress blue and Refinement red.
 - Click an issue to open it in your default browser.
 - PRs show open/draft/merged/closed states and source/target branches. Actions show workflow, ref and run status.
+- Actions status buttons combine with OR (for example running + success + waiting); All clears the selection. Search has its own row. Runs show start/finish timestamps in UTC and duration or running elapsed time. Blue means running, green success, red failure/cancelled and yellow waiting. Successful CI alone does not establish that a PR is mergeable.
 - Related-item buttons switch panels and filter to linked issues, PRs or runs. Clear link restores the full list.
 - Reads the base checkout's `.env`; worktrees share repository-wide issues and credentials.
 

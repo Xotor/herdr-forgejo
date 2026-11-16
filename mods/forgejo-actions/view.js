@@ -21,6 +21,7 @@ export default class Issues extends View {
   get title() { return this.kind === "prs" ? "Pull Requests" : this.kind === "actions" ? "Actions" : "Issues"; }
   init(_p, cx) {
     this.state = this.kind === "actions" ? "all" : "open"; this.tags = new Map();
+    this.actionStates = new Set();
     this.sortBy = "updated_at"; this.sortDirection = "desc";
     this.search = InputState.new({ placeholder: "Search " + this.title.toLowerCase() + "..." });
     this.search.on("change", (_e, cx) => cx.notify());
@@ -106,8 +107,20 @@ export default class Issues extends View {
     run("layout.show", { id: "panel" });
   }
   statusColor(state, t) {
-    return ["open", "success"].includes(state) ? t.ansi2 : ["failure", "blocked"].includes(state) ? t.ansi1
-      : ["running", "in_progress"].includes(state) ? t.ansi4 : state === "merged" ? t.ansi5 : t.muted;
+    return ["open", "success"].includes(state) ? t.ansi2 : ["failure", "failed", "cancelled", "canceled", "blocked"].includes(state) ? t.ansi1
+      : ["running", "in_progress"].includes(state) ? t.ansi4 : ["waiting", "queued", "pending"].includes(state) ? t.ansi3 : state === "merged" ? t.ansi5 : t.muted;
+  }
+  toggleState(state, cx) {
+    if (this.kind !== "actions") this.state = state;
+    else if (state === "all") this.actionStates.clear();
+    else if (this.actionStates.has(state)) this.actionStates.delete(state);
+    else this.actionStates.add(state);
+    cx.notify();
+  }
+  searchBox() {
+    const t = theme();
+    return div().flex_1().min_w(0).px(8).rounded(12).border_1().border_color(t.foreground).bg(t.raised)
+      .child(Input.new(this.search).h(28).text_size(12).text_color(t.foreground));
   }
   open(issue, cx) {
     const path = this.kind === "actions" ? "actions/runs" : this.kind === "prs" ? "pulls" : "issues";
@@ -135,19 +148,20 @@ export default class Issues extends View {
     const nav = shared("forgejo.navigate");
     if (nav?.kind === this.kind && nav.key === this.context?.key && nav.stamp !== this.navStamp) {
       this.navStamp = nav.stamp; this.related = nav; this.state = "all"; this.tags.clear();
+      this.actionStates.clear();
       cx.spawn(async cx => { this.search.set_value(""); cx.notify(); });
     }
     const query = this.search.value().toLowerCase(), items = this.data?.[this.kind] ?? [];
     const labels = this.kind === "actions" ? [] : [...new Set([...(this.data?.labels ?? []), ...items.flatMap(i => i.labels)])].sort((a, b) => a.localeCompare(b));
-    const states = this.kind === "actions" ? ["all", "running", "success", "failure", "waiting", "cancelled"] : this.kind === "prs" ? ["open", "draft", "merged", "closed", "all"] : ["open", "closed", "all"];
-    const rows = items.filter(i => (this.state === "all" || i.state === this.state)
+    const states = this.kind === "actions" ? [...new Set(["all", "running", "success", "failure", "waiting", "cancelled", ...items.map(i => actionStatus(i.state))])] : this.kind === "prs" ? ["open", "draft", "merged", "closed", "all"] : ["open", "closed", "all"];
+    const rows = items.filter(i => (this.kind === "actions" ? !this.actionStates.size || this.actionStates.has(actionStatus(i.state)) : this.state === "all" || i.state === this.state)
       && (!this.related || (i.links ?? []).some(l => l.kind === this.related.fromKind && l.number === this.related.fromNumber))
       && [...this.tags].every(([label, mode]) => mode === "include" ? i.labels.includes(label) : !i.labels.includes(label))
       && `${i.number} ${i.title} ${i.detail ?? ''} ${i.sha ?? ''} ${i.labels.join(' ')} ${i.assignees.join(' ')}`.toLowerCase().includes(query))
       .sort((a, b) => compareIssues(a, b, this.sortBy ?? "updated_at", this.sortDirection ?? "desc"));
     // Bound native element creation: large repositories can otherwise exceed
     // Herdr's per-render execution budget when every issue is built eagerly.
-    const filterKey = JSON.stringify([this.locationKey, query, this.state, [...this.tags], this.sortBy, this.sortDirection, this.related]);
+    const filterKey = JSON.stringify([this.locationKey, query, this.state, [...this.actionStates], [...this.tags], this.sortBy, this.sortDirection, this.related]);
     if (filterKey !== this.filterKey) { this.filterKey = filterKey; this.page = 0; }
     const pageCount = Math.max(1, Math.ceil(rows.length / 20));
     this.page = Math.min(this.page ?? 0, pageCount - 1);
@@ -160,10 +174,11 @@ export default class Issues extends View {
       .when(Boolean(this.enriching), el => el.child(div().px(10).pb(5).text_size(11).text_color(t.dim).child("Loading history and related items...")))
       .child(div().px(10).pb(6).text_color(t.muted).child(this.context ? this.context.repo : "Follow focused repository"))
       .child(h_flex().px(8).py(6).gap(5).items_center().flex_wrap().flex_none()
-        .children(states.map(state => this.button(state, state,
-          cx => { this.state = state; cx.notify(); }, this.state === state)))
-        .child(div().flex_1().min_w(0).px(8).rounded(12).border_1().border_color(t.foreground).bg(t.raised)
-          .child(Input.new(this.search).h(28).text_size(12).text_color(t.foreground))))
+        .children(states.map(state => this.button(state, (this.kind === "actions" && this.actionStates.has(state) ? "✓ " : "") + state,
+          cx => this.toggleState(state, cx), this.kind === "actions" ? state === "all" ? !this.actionStates.size : this.actionStates.has(state) : this.state === state,
+          this.kind === "actions" && state !== "all" ? this.statusColor(state, t) : null)))
+        .when(this.kind !== "actions", el => el.child(this.searchBox())))
+      .when(this.kind === "actions", el => el.child(h_flex().px(8).pb(7).flex_none().child(this.searchBox())))
       .child(h_flex().px(8).pb(7).gap(5).items_center().flex_wrap().flex_none()
         .child(div().text_color(t.muted).child("Sort"))
         .children([["number", "#"], ["created_at", "Created"], ["updated_at", "Modified"]].map(([field, label]) =>
@@ -183,10 +198,11 @@ export default class Issues extends View {
         .child(this.button("clear-related", "Clear link", cx => { this.related = null; cx.notify(); }))))
       .child(div().h(1).flex_none().bg(t.foreground))
       .child(v_flex().id("issue-list").flex_1().min_h(0).overflow_y_scrollbar().p(8).gap(7)
-        .children(visibleRows.map(i => v_flex().id(`issue-${i.number}`).p(9).gap(7).rounded(10).border_1().border_color(t.foreground).cursor_pointer().hover(s => s.bg(t.hover))
+        .children(visibleRows.map(i => v_flex().id(`issue-${i.number}`).p(9).gap(7).rounded(10).border_1().border_color(this.kind === "actions" ? this.statusColor(i.state, t) : t.foreground).cursor_pointer().hover(s => s.bg(t.hover))
           .on_click((_e, cx) => this.open(i, cx))
-          .child(div().text_color(t.foreground).child(`#${i.number}  ${i.title}`))
+          .child(div().text_color(this.kind === "actions" ? this.statusColor(i.state, t) : t.foreground).child(`#${i.number}  ${i.title}`))
           .when(Boolean(i.detail), el => el.child(div().text_color(t.muted).text_size(11).child(i.detail)))
+          .when(this.kind === "actions", el => el.child(div().text_color(t.muted).text_size(11).child(actionTiming(i))))
           .child(h_flex().flex_wrap().gap(6).items_center().text_size(11)
             .child(div().px(7).py(2).rounded(10).border_1().border_color(this.statusColor(i.state, t))
               .text_color(this.statusColor(i.state, t)).child(i.state))
@@ -213,4 +229,17 @@ export function compareIssues(a, b, field, direction) {
   const value = issue => field === "number" ? Number(issue.number) || 0 : Date.parse(issue[field] ?? "") || 0;
   const difference = value(a) - value(b) || (Number(a.number) || 0) - (Number(b.number) || 0);
   return direction === "asc" ? difference : -difference;
+}
+
+export function actionStatus(state) {
+  return state === "in_progress" ? "running" : ["queued", "pending"].includes(state) ? "waiting" : state === "failed" ? "failure" : state === "canceled" ? "cancelled" : state;
+}
+export function actionTiming(item, now = Date.now()) {
+  const timestamp = value => { const n = Date.parse(value ?? ""); return Number.isFinite(n) && n > 0 ? n : null; };
+  const start = timestamp(item.started_at), finish = timestamp(item.finished_at);
+  const format = n => n ? new Date(n).toISOString().replace('T', ' ').replace('.000Z', ' UTC') : '—';
+  const running = actionStatus(item.state) === 'running';
+  const seconds = start && (finish || running) ? Math.max(0, Math.floor(((finish ?? now) - start) / 1000)) : item.duration_seconds > 0 ? Math.floor(item.duration_seconds) : null;
+  const duration = seconds === null ? '—' : seconds >= 3600 ? `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m ${seconds % 60}s` : seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
+  return `Started: ${format(start)}\nFinished: ${format(finish)} · ${running ? 'Elapsed' : 'Duration'}: ${duration}`;
 }

@@ -237,6 +237,8 @@ def board(ctx, token, primary=None):
                         numbers.append(payload['number'])
                     normal.update(number=row.get('index_in_repo', row.get('run_number', row.get('id'))), title=row.get('title') or row.get('workflow_id') or 'Workflow run',
                                   state=row.get('status', 'unknown'), created_at=row.get('created', row.get('created_at')), updated_at=row.get('updated', row.get('updated_at')),
+                                  started_at=row.get('started', row.get('run_started_at')), finished_at=row.get('stopped', row.get('completed_at')),
+                                  duration_seconds=(row['duration'] / 1000000000) if isinstance(row.get('duration'), (int, float)) else None,
                                   sha=row.get('commit_sha', row.get('head_sha')), detail=' · '.join(str(x) for x in [row.get('workflow_id'), row.get('prettyref'), row.get('event')] if x),
                                   _pr_numbers=[int(n) for n in numbers if str(n).isdigit()])
                 output[kind].append(normal)
