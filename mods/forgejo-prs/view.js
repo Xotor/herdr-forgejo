@@ -101,14 +101,18 @@ export default class Issues extends View {
     else this.tags.set(label, "include");
     cx.notify();
   }
-  relatedTo(issue, kind) {
-    setShared("forgejo.navigate", { key: this.context.key, kind, fromKind: this.kind, fromNumber: issue.number, stamp: Date.now() });
+  relatedTo(issue, kind, number = null) {
+    setShared("forgejo.navigate", { key: this.context.key, kind, number, fromKind: this.kind, fromNumber: issue.number, stamp: Date.now() });
     run("layout.select", { stack: "panel-body", child: "forgejo-" + kind });
     run("layout.show", { id: "panel" });
   }
   statusColor(state, t) {
     return ["open", "success"].includes(state) ? t.ansi2 : ["failure", "failed", "cancelled", "canceled", "blocked"].includes(state) ? t.ansi1
       : ["running", "in_progress"].includes(state) ? t.ansi4 : ["waiting", "queued", "pending"].includes(state) ? t.ansi3 : state === "merged" ? t.ansi5 : t.muted;
+  }
+  cardColor(item, t) {
+    return this.kind === 'actions' ? this.statusColor(item.state, t)
+      : this.kind === 'prs' && item.state === 'open' && item.mergeable === true ? t.ansi2 : t.foreground;
   }
   toggleState(state, cx) {
     if (this.kind !== "actions") this.state = state;
@@ -155,7 +159,7 @@ export default class Issues extends View {
     const labels = this.kind !== "issues" ? [] : [...new Set([...(this.data?.labels ?? []), ...items.flatMap(i => i.labels)])].sort((a, b) => a.localeCompare(b));
     const states = this.kind === "actions" ? [...new Set(["all", "running", "success", "failure", "waiting", "cancelled", ...items.map(i => actionStatus(i.state))])] : this.kind === "prs" ? ["open", "draft", "merged", "closed", "all"] : ["open", "closed", "all"];
     const rows = items.filter(i => (this.kind === "actions" ? !this.actionStates.size || this.actionStates.has(actionStatus(i.state)) : this.state === "all" || i.state === this.state)
-      && (!this.related || (i.links ?? []).some(l => l.kind === this.related.fromKind && l.number === this.related.fromNumber))
+      && (!this.related || (this.related.number != null ? i.number === this.related.number : (i.links ?? []).some(l => l.kind === this.related.fromKind && l.number === this.related.fromNumber)))
       && [...this.tags].every(([label, mode]) => mode === "include" ? i.labels.includes(label) : !i.labels.includes(label))
       && `${i.number} ${i.title} ${i.detail ?? ''} ${i.sha ?? ''} ${i.labels.join(' ')} ${i.assignees.join(' ')}`.toLowerCase().includes(query))
       .sort((a, b) => compareIssues(a, b, this.sortBy ?? "updated_at", this.sortDirection ?? "desc"));
@@ -202,11 +206,16 @@ export default class Issues extends View {
         .child(this.button("clear-related", "Clear link", cx => { this.related = null; cx.notify(); }))))
       .child(div().h(1).flex_none().bg(t.foreground))
       .child(v_flex().id("issue-list").flex_1().min_h(0).overflow_y_scrollbar().p(8).gap(7)
-        .children(visibleRows.map(i => v_flex().id(`issue-${i.number}`).p(9).gap(7).rounded(10).border_1().border_color(this.kind === "actions" ? this.statusColor(i.state, t) : t.foreground).cursor_pointer().hover(s => s.bg(t.hover))
+        .children(visibleRows.map(i => v_flex().id(`issue-${i.number}`).p(9).gap(7).rounded(10).border_1().border_color(this.cardColor(i, t)).cursor_pointer().hover(s => s.bg(t.hover))
           .on_click((_e, cx) => this.open(i, cx))
-          .child(div().text_color(this.kind === "actions" ? this.statusColor(i.state, t) : t.foreground).child(`#${i.number}  ${i.title}`))
+          .child(div().text_color(this.cardColor(i, t)).child(`#${i.number}  ${i.title}`))
           .when(Boolean(i.detail), el => el.child(div().text_color(t.muted).text_size(11).child(i.detail)))
           .when(this.kind === "actions", el => el.child(div().text_color(t.muted).text_size(11).child(actionTiming(i, Date.now(), this.wideTiming !== false))))
+          .when(this.kind === 'prs' && i.state === 'open', el => el.child(div().text_size(11)
+            .text_color(i.mergeable === true ? t.ansi2 : t.muted).child(i.mergeable === true ? 'Mergeable · reported by Forgejo' : i.mergeable === false ? 'Not mergeable · reported by Forgejo' : 'Mergeability unknown')))
+          .when(this.kind === 'prs' && Boolean(i.action_runs?.length), el => el.child(v_flex().gap(4).children(i.action_runs.map(action =>
+            this.button(`pr-${i.number}-action-${action.number}`, `${action.workflow || action.title || 'Action'} #${action.number} · ${action.state}`,
+              cx => this.relatedTo(i, 'actions', action.number), false, this.statusColor(action.state, t))))))
           .child(h_flex().flex_wrap().gap(6).items_center().text_size(11)
             .child(div().px(7).py(2).rounded(10).border_1().border_color(this.statusColor(i.state, t))
               .text_color(this.statusColor(i.state, t)).child(i.state))

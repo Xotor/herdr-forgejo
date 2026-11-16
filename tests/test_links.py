@@ -32,6 +32,7 @@ class LinkTests(unittest.TestCase):
         self.assertTrue(any(l['kind'] == 'actions' and l['number'] == 20 for l in issues[0]['links']))
         self.assertEqual(issues[1]['links'], [])
         self.assertEqual(runs[1]['links'], [])
+        self.assertEqual(prs[0]['action_runs'][0]['number'], 20)
 
     def test_api_pr_reference_without_sha(self):
         prs = [{'number': 9, '_issue_refs': [], '_shas': []}]

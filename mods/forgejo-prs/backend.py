@@ -180,6 +180,9 @@ def link_graph(issue_rows, pulls, runs):
                         connect(run, by_issue[ref['number']], 'actions', 'issues', 'via PR #' + str(pr['number']))
     for pr in pulls:
         pr.pop('_shas', None)
+        linked = {link['number'] for link in pr['links'] if link['kind'] == 'actions'}
+        recent = sorted((run for run in runs if run['number'] in linked), key=lambda run: (run.get('created_at') or '', run['number']), reverse=True)
+        pr['action_runs'] = [{key: run.get(key) for key in ('number', 'title', 'state', 'workflow')} for run in recent[:6]]
 
 
 def board(ctx, token, primary=None):
@@ -218,6 +221,7 @@ def board(ctx, token, primary=None):
                     refs += [int(n) for n in re.findall(r'(?<![\w/])#(\d+)\b', text)]
                     head, base = row.get('head') or {}, row.get('base') or {}
                     normal.update(state='merged' if row.get('merged') else 'draft' if row.get('draft') and row.get('state') == 'open' else row.get('state'),
+                                  mergeable=row.get('mergeable') if isinstance(row.get('mergeable'), bool) else None,
                                   detail=str(head.get('ref', '?')) + ' → ' + str(base.get('ref', '?')),
                                   _issue_refs=sorted(set(refs)), _shas=[s for s in [head.get('sha'), row.get('merge_commit_sha')] if s])
                 if kind == 'actions':
@@ -239,6 +243,7 @@ def board(ctx, token, primary=None):
                                   state=row.get('status', 'unknown'), created_at=row.get('created', row.get('created_at')), updated_at=row.get('updated', row.get('updated_at')),
                                   started_at=row.get('started', row.get('run_started_at')), finished_at=row.get('stopped', row.get('completed_at')),
                                   duration_seconds=(row['duration'] / 1000000000) if isinstance(row.get('duration'), (int, float)) else None,
+                                  workflow=row.get('workflow_id'),
                                   sha=row.get('commit_sha', row.get('head_sha')), detail=' · '.join(str(x) for x in [row.get('workflow_id'), row.get('prettyref'), row.get('event')] if x),
                                   _pr_numbers=[int(n) for n in numbers if str(n).isdigit()])
                 output[kind].append(normal)

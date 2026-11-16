@@ -38,7 +38,7 @@ export default class Fixture extends Panel {
     }
     this.context = {key:'demo/repo', base:'https://example.invalid', repo:'demo/repo'};
     const row = {number:12, title:'Example item', labels:['Ready','frontend'], assignees:[],
-      state: this.kind === 'actions' ? 'success' : 'open', detail:'ci.yml · main', started_at:'2026-01-01T12:00:00Z',finished_at:'2026-01-01T12:01:30Z',
+      state: this.kind === 'actions' ? 'success' : 'open', mergeable:true, action_runs:[{number:20,workflow:'ci.yml',state:'running'},{number:21,workflow:'checks.yml',state:'waiting'}],detail:'ci.yml · main', started_at:'2026-01-01T12:00:00Z',finished_at:'2026-01-01T12:01:30Z',
       links:[{kind:'issues',number:1,reason:'mentioned in PR'},{kind:'prs',number:2,reason:'exact commit'}, {kind:'actions',number:3,reason:'via PR #2'}]};
     this.data = {[this.kind]:Array.from({length:80},(_,i)=>({...row,number:i+1})),labels:['Ready','frontend']};
   }
