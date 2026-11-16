@@ -20,11 +20,15 @@ Click a label to cycle **✓ include → ✕ exclude → unfiltered**. Multiple 
 
 ### Pull Requests
 
+![Pull Requests: attached Action statuses and conflict-free checks](screenshots/prs.png)
+
 PR cards show branch direction and up to six recent attached workflow runs, each with its colored status. Clicking a run opens that specific item in Actions. Recent runs are fetched with the initial PR list, so badges need not wait for the complete history lookup.
 
 An open PR turns green only when Forgejo reports no merge conflicts and the latest loaded run for each attached workflow has succeeded or been skipped. Running, waiting, failed, cancelled or unknown CI keeps the card neutral. The status distinguishes **Conflict-free · checks running** from **Conflict-free · loaded checks passed**. This summarizes loaded checks; it does not evaluate every branch-protection rule, required review or merge permission.
 
 ### Actions
+
+![Actions: colored run states, timing details and related items](screenshots/actions.png)
 
 Select several statuses at once—for example **running + success + waiting**. Matches combine with OR; **All** clears the selection. Search has its own line.
 
