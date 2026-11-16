@@ -11,7 +11,7 @@ A compact, read-only Forgejo browser for Herdr's side panel, with separate Issue
 - Ready labels are green, In Progress blue and Refinement red.
 - Click an issue to open it in your default browser.
 - PRs show open/draft/merged/closed states and source/target branches. Actions show workflow, ref and run status.
-- Open PR cards turn green only when Forgejo explicitly returns `mergeable: true`. Linked workflow runs show their individual colored statuses on the PR card (latest six); clicking one opens that run in the Actions panel. These links appear after background enrichment completes. Forgejo's mergeable flag is shown as reported; it does not establish the current user's permission to merge.
+- Open PR cards turn green only when Forgejo reports conflict-free merging and the newest loaded run for each attached workflow has passed or been skipped. Running, waiting, failed/cancelled or missing CI keeps the card neutral. The label says “Conflict-free · loaded checks passed”; this is not a complete branch-protection/review/permission evaluation. Linked workflow runs show their individual colored statuses on the PR card (latest six); clicking one opens that run in Actions.
 - Actions status buttons combine with OR (for example running + success + waiting); All clears the selection. Search has its own row. Runs show start/finish timestamps in UTC and duration or running elapsed time. Blue means running, green success, red failure/cancelled and yellow waiting. Successful CI alone does not establish that a PR is mergeable.
 - Related-item buttons switch panels and filter to linked issues, PRs or runs. Clear link restores the full list.
 - Reads the base checkout's `.env`; worktrees share repository-wide issues and credentials.

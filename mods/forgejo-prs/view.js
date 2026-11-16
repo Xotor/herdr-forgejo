@@ -112,7 +112,7 @@ export default class Issues extends View {
   }
   cardColor(item, t) {
     return this.kind === 'actions' ? this.statusColor(item.state, t)
-      : this.kind === 'prs' && item.state === 'open' && item.mergeable === true ? t.ansi2 : t.foreground;
+      : this.kind === 'prs' && prReadiness(item).ready ? t.ansi2 : t.foreground;
   }
   toggleState(state, cx) {
     if (this.kind !== "actions") this.state = state;
@@ -212,7 +212,7 @@ export default class Issues extends View {
           .when(Boolean(i.detail), el => el.child(div().text_color(t.muted).text_size(11).child(i.detail)))
           .when(this.kind === "actions", el => el.child(div().text_color(t.muted).text_size(11).child(actionTiming(i, Date.now(), this.wideTiming !== false))))
           .when(this.kind === 'prs' && i.state === 'open', el => el.child(div().text_size(11)
-            .text_color(i.mergeable === true ? t.ansi2 : t.muted).child(i.mergeable === true ? 'Mergeable · reported by Forgejo' : i.mergeable === false ? 'Not mergeable · reported by Forgejo' : 'Mergeability unknown')))
+            .text_color(prReadiness(i).ready ? t.ansi2 : t.muted).child(prReadiness(i).label)))
           .when(this.kind === 'prs' && Boolean(i.action_runs?.length), el => el.child(v_flex().gap(4).children(i.action_runs.map(action =>
             this.button(`pr-${i.number}-action-${action.number}`, `${action.workflow || action.title || 'Action'} #${action.number} · ${action.state}`,
               cx => this.relatedTo(i, 'actions', action.number), false, this.statusColor(action.state, t))))))
@@ -248,6 +248,20 @@ export function compareIssues(a, b, field, direction) {
 
 export function actionStatus(state) {
   return state === "in_progress" ? "running" : ["queued", "pending"].includes(state) ? "waiting" : state === "failed" ? "failure" : state === "canceled" ? "cancelled" : state;
+}
+export function prReadiness(item) {
+  if (item.state !== 'open') return {ready:false,label:'Not an open PR'};
+  if (item.mergeable !== true) return {ready:false,label:item.mergeable === false ? 'Not mergeable · reported by Forgejo' : 'Mergeability unknown'};
+  const runs = [...(item.action_runs ?? [])].sort((a,b) => b.number-a.number);
+  const latest = new Map();
+  for (const run of runs) if (!latest.has(run.workflow || run.title || run.number)) latest.set(run.workflow || run.title || run.number, actionStatus(run.state));
+  const statuses = [...latest.values()];
+  if (!statuses.length) return {ready:false,label:'Conflict-free · CI status unknown'};
+  if (statuses.some(s => ['failure','cancelled','blocked'].includes(s))) return {ready:false,label:'Conflict-free · checks failed or cancelled'};
+  if (statuses.includes('running')) return {ready:false,label:'Conflict-free · checks running'};
+  if (statuses.includes('waiting')) return {ready:false,label:'Conflict-free · checks waiting'};
+  if (!statuses.every(s => ['success','skipped'].includes(s))) return {ready:false,label:'Conflict-free · CI status unknown'};
+  return {ready:true,label:'Conflict-free · loaded checks passed'};
 }
 export function actionTiming(item, now = Date.now(), wide = true) {
   const timestamp = value => { const n = Date.parse(value ?? ""); return Number.isFinite(n) && n > 0 ? n : null; };

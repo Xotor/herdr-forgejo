@@ -8,7 +8,7 @@ for kind in ['issues', 'prs', 'actions']:
     folder = root / 'tests/_native' / kind
     folder.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(root / 'mods/forgejo-issues/main.js', folder / 'view.js')
-    fixture = '''import Panel, {actionTiming, actionStatus} from './view.js';
+    fixture = '''import Panel, {actionTiming, actionStatus, prReadiness} from './view.js';
 export default class Fixture extends Panel {
   get kind() { return 'KIND'; }
   init(p, cx) {
@@ -20,6 +20,11 @@ export default class Fixture extends Panel {
     this.checkDeadline(cx, 20);
     if (this.enriching || !this.data || !this.error.includes('loaded list')) throw new Error('Enrichment deadline lost primary list');
     this.error = null;
+    for (const status of ['running','waiting','failure','cancelled']) {
+      if (prReadiness({state:'open',mergeable:true,action_runs:[{number:1,workflow:'ci.yml',state:status}]}).ready) throw new Error('Pending or failed CI marked ready');
+    }
+    if (!prReadiness({state:'open',mergeable:true,action_runs:[{number:2,workflow:'ci.yml',state:'success'},{number:1,workflow:'ci.yml',state:'failure'}]}).ready) throw new Error('Latest successful run must supersede old failure');
+    if (prReadiness({state:'open',mergeable:true}).ready) throw new Error('Unknown CI marked ready');
     if (this.kind === 'actions') {
       this.toggleState('running',cx); this.toggleState('success',cx); this.toggleState('waiting',cx);
       if (this.actionStates.size !== 3) throw new Error('Multi-status selection failed');
