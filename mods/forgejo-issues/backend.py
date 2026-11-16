@@ -3,6 +3,7 @@ import json
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlsplit, urlencode, quote
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -114,6 +115,9 @@ def issues(ctx, token):
 
 def main():
     ctx, token = context(sys.argv[2])
+    if sys.argv[1] == 'board':
+        print(json.dumps(ctx | board(ctx, token), ensure_ascii=True))
+        return
     out = ctx if sys.argv[1] == 'context' else ctx | issues(ctx, token)
     if sys.argv[1] != 'context':
         labels = []
@@ -125,6 +129,119 @@ def main():
                 break
         out['labels'] = labels
     print(json.dumps(out, ensure_ascii=True))
+
+
+def collection(ctx, token, suffix, params=None, pages=100):
+    endpoint = 'repos/' + '/'.join(quote(s, safe='') for s in ctx['repo'].split('/')) + '/' + suffix + '?'
+    result = []
+    for page in range(1, pages + 1):
+        data, headers = request(ctx['base'], endpoint + urlencode(dict(params or {}, page=page, limit=50)), token)
+        rows = (data.get('workflow_runs', data.get('runs', [])) or []) if isinstance(data, dict) else data
+        if not isinstance(rows, list):
+            raise ValueError('Unexpected Forgejo list response.')
+        result.extend(rows)
+        if not rows or ('rel="next"' not in headers.get('Link', '') and len(rows) < 50):
+            return result, False
+    return result, True
+
+
+def link_graph(issue_rows, pulls, runs):
+    """Only confirmed repository objects and explicit references / exact SHAs."""
+    by_issue = {i['number']: i for i in issue_rows}
+    by_pr = {p['number']: p for p in pulls}
+    for row in [*issue_rows, *pulls, *runs]:
+        row['links'] = []
+
+    def connect(left, right, left_kind, right_kind, reason):
+        for source, target, kind in ((left, right, right_kind), (right, left, left_kind)):
+            link = {'kind': kind, 'number': target['number'], 'reason': reason}
+            if link not in source['links']:
+                source['links'].append(link)
+
+    for pr in pulls:
+        for number in pr.pop('_issue_refs', []):
+            if number in by_issue:
+                connect(pr, by_issue[number], 'prs', 'issues', 'mentioned in PR')
+    for run in runs:
+        explicit = run.pop('_pr_numbers', [])
+        sha = run.get('sha')
+        for pr in pulls:
+            reason = 'API PR reference' if pr['number'] in explicit else 'exact commit' if sha and sha in pr.get('_shas', []) else None
+            if reason:
+                connect(run, pr, 'actions', 'prs', reason)
+                for ref in pr['links'][:]:
+                    if ref['kind'] == 'issues':
+                        connect(run, by_issue[ref['number']], 'actions', 'issues', 'via PR #' + str(pr['number']))
+    for pr in pulls:
+        pr.pop('_shas', None)
+
+
+def board(ctx, token):
+    warnings = []
+    output = {'issues': [], 'prs': [], 'actions': [], 'labels': [], 'limited': False, 'limits': {}}
+    specs = [('issues', 'issues', {'state': 'all', 'type': 'issues'}, 100),
+             ('prs', 'pulls', {'state': 'all'}, 100), ('actions', 'actions/runs', {}, 10)]
+    pool = ThreadPoolExecutor(max_workers=4)
+    pending = {kind: pool.submit(collection, ctx, token, suffix, params, pages) for kind, suffix, params, pages in specs}
+    pending['labels'] = pool.submit(collection, ctx, token, 'labels')
+    for kind, suffix, params, pages in specs:
+        try:
+            raw, limited = pending[kind].result()
+            output['limited'] |= limited
+            output['limits'][kind] = limited
+            for row in raw:
+                if kind == 'issues' and row.get('pull_request'):
+                    continue
+                normal = {k: row.get(k) for k in ('number', 'title', 'created_at', 'updated_at')}
+                expected = ctx['base'].rstrip('/') + '/' + ctx['repo'] + '/'
+                candidate = row.get('html_url') or ''
+                if candidate.startswith(expected) and re.fullmatch(r'(?:issues|pulls|actions/runs)/\d+', candidate[len(expected):]):
+                    normal['web_url'] = candidate
+                normal.update(state=row.get('state', 'unknown'), labels=[x['name'] for x in row.get('labels') or []],
+                              assignees=[x['login'] for x in row.get('assignees') or []])
+                if kind == 'prs':
+                    text = row.get('title', '') + '\n' + (row.get('body') or '')
+                    # Strip foreign repo-qualified references before matching bare #123.
+                    own_url = re.escape(ctx['base'].rstrip('/') + '/' + ctx['repo']) + r'/(?:issues|pulls)/(\d+)'
+                    refs = [int(n) for n in re.findall(own_url, text)]
+                    refs += [int(n) for n in re.findall(r'(?<![\w/])' + re.escape(ctx['repo']) + r'#(\d+)\b', text)]
+                    text = re.sub(r'https?://\S+|[\w.-]+/[\w.-]+#\d+', '', text)
+                    refs += [int(n) for n in re.findall(r'(?<![\w/])#(\d+)\b', text)]
+                    head, base = row.get('head') or {}, row.get('base') or {}
+                    normal.update(state='merged' if row.get('merged') else 'draft' if row.get('draft') and row.get('state') == 'open' else row.get('state'),
+                                  detail=str(head.get('ref', '?')) + ' → ' + str(base.get('ref', '?')),
+                                  _issue_refs=sorted(set(refs)), _shas=[s for s in [head.get('sha'), row.get('merge_commit_sha')] if s])
+                if kind == 'actions':
+                    payload = row.get('event_payload') or {}
+                    if isinstance(payload, str):
+                        try:
+                            payload = json.loads(payload)
+                        except (ValueError, TypeError):
+                            payload = {}
+                    if not isinstance(payload, dict):
+                        payload = {}
+                    pr = payload.get('pull_request') or {}
+                    numbers = [p.get('number') for p in row.get('pull_requests') or [] if isinstance(p, dict)]
+                    if isinstance(pr, dict) and pr.get('number'):
+                        numbers.append(pr['number'])
+                    if str(row.get('event', '')).startswith('pull_request') and payload.get('number'):
+                        numbers.append(payload['number'])
+                    normal.update(number=row.get('index_in_repo', row.get('run_number', row.get('id'))), title=row.get('title') or row.get('workflow_id') or 'Workflow run',
+                                  state=row.get('status', 'unknown'), created_at=row.get('created', row.get('created_at')), updated_at=row.get('updated', row.get('updated_at')),
+                                  sha=row.get('commit_sha', row.get('head_sha')), detail=' · '.join(str(x) for x in [row.get('workflow_id'), row.get('prettyref'), row.get('event')] if x),
+                                  _pr_numbers=[int(n) for n in numbers if str(n).isdigit()])
+                output[kind].append(normal)
+        except ValueError as error:
+            warnings.append(kind + ': ' + str(error))
+    try:
+        labels, _ = pending['labels'].result()
+        output['labels'] = [x['name'] for x in labels]
+    except ValueError as error:
+        warnings.append('labels: ' + str(error))
+    pool.shutdown(wait=True)
+    link_graph(output['issues'], output['prs'], output['actions'])
+    output['warnings'] = warnings
+    return output
 
 
 if __name__ == '__main__':

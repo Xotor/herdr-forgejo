@@ -1,0 +1,3 @@
+# Forgejo Actions
+
+Use the root RECIPE.md for the shared panel design. Install this folder as `mods/forgejo-actions`, add a `forgejo-actions` child to `panel-body`, and add an Actions toggle. Keep all three mods installed for in-app related-item navigation. Show the latest 500 repository-wide runs, workflow/ref/event details and colored status badges. Search, status-filter and sort before pagination. Links use explicit PR metadata or exact commit matches; issue links derive through those PRs. It reads the base checkout's .env and needs Actions read permission. It never starts, retries, approves or cancels a run. Unsupported/forbidden endpoints produce a partial-data warning. See README.md for details.

@@ -2,6 +2,8 @@
 
 A compact repository-wide Forgejo issue list beside Herdr's Files and Changes. Search, state and tag filters stay above a scrolling list of outlined issue cards, with a compact range footer below.
 
+The suite also includes `mods/forgejo-prs` and `mods/forgejo-actions`, sharing the same view and credential rules. Add their blocks/toggles beside Issues; include their IDs in tab-bar panel persistence. PR cards show branch direction and open/draft/merged/closed status. Action cards show workflow, ref and run state. Each card groups links to the other panels with counts. Clicking a group switches panels and shows items linked back to that source, clearing text/tag/status filters; Clear link restores normal browsing. Show link provenance (PR mention, API PR reference, exact commit, or via PR). Links cover loaded records only; do not infer relationships from similar branch names. All operations remain read-only. Companion mod recipes describe installation independently.
+
 ![Forgejo Issues](preview.png)
 
 ## What you see

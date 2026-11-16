@@ -1,6 +1,6 @@
 # Forgejo Issues for Herdr
 
-A compact, read-only Forgejo issue browser for Herdr's side panel.
+A compact, read-only Forgejo browser for Herdr's side panel, with separate Issues, Pull Requests and Actions mods.
 
 ![Forgejo Issues](preview.png)
 
@@ -10,6 +10,8 @@ A compact, read-only Forgejo issue browser for Herdr's side panel.
 - Click a tag to cycle **✓ include → ✕ exclude → unfiltered**. Filters combine.
 - Ready labels are green, In Progress blue and Refinement red.
 - Click an issue to open it in your default browser.
+- PRs show open/draft/merged/closed states and source/target branches. Actions show workflow, ref and run status.
+- Related-item buttons switch panels and filter to linked issues, PRs or runs. Clear link restores the full list.
 - Reads the base checkout's `.env`; worktrees share repository-wide issues and credentials.
 
 ## Requirements
@@ -40,19 +42,29 @@ The mod also works in a standalone pane:
 herdr-app do pane.split --direction right --mod forgejo-issues
 ```
 
-No full layout or custom editor is bundled. Existing mods with the same name must be renamed or backed up before installation.
+For the full suite, install all three folders under `mods/` and add panel blocks and toggles for `forgejo-issues`, `forgejo-prs` and `forgejo-actions`. Each companion mod is self-contained. No full layout or custom editor is bundled. Existing mods with the same name must be renamed or backed up before installation.
+
+## Linking and limits
+
+PR title/body references to existing issues create bidirectional links, labelled “mentioned in PR”; these do not claim a closing relationship. Runs link to PRs through API event metadata or an exact head/merge commit match. Issue-to-run links are then derived through that PR. Branch name similarity never creates links. Foreign-repository references are not treated as local issue numbers. Timeline-only and comment-only references are not currently indexed.
+
+Links cover fetched records only: at most 5,000 issues, 5,000 PRs and the latest 500 runs. The footer shows `+` when that panel's result limit is reached. Some older servers or tokens cannot list Actions; partial failures are shown while the other data stays usable. Separate datasets fetch in parallel. No merge/rerun/cancel buttons are provided.
 
 ## Access and storage
 
 The mod runs Git and a Python helper, reads `.env` outside its own folder, and makes authenticated read-only HTTPS requests to Forgejo. Remote execution goes through Herdr. Credentials stay inside the helper, are not passed in command arguments, and are not printed or cached. HTTP redirects are refused. Issue data is cached in memory only. Browsing launches the local default browser; no issues are edited or posted.
 
-Issue fetching is bounded to 100 pages of 50; a `+` suffix on the total indicates the limit. A refresh failure can display cached results. Tokens with missing permissions, absent Python, offline machines and non-Git folders produce an error in the panel.
+A refresh failure can display cached results. Tokens with missing permissions, absent Python, offline machines and non-Git folders produce an error in the panel. The token also needs read access to Actions to populate the workflow panel.
 
 ## Development
 
 ```sh
 python -m unittest discover -s tests
 herdr-app check mods/forgejo-issues
+herdr-app check mods/forgejo-prs
+herdr-app check mods/forgejo-actions
 ```
+
+Run `python sync_panels.py` after modifying the shared Issues view or backend; it regenerates the self-contained companion copies.
 
 License: MIT. UI editing workflow was inspired by community Herdr mods; this package contains the Forgejo mod only, with no copied tab-bar code or icons.
