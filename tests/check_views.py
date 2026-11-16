@@ -29,6 +29,9 @@ export default class Fixture extends Panel {
       if (this.actionStates.size) throw new Error('All reset failed');
       const timing=actionTiming({state:'success',started_at:'2026-01-01T12:00:00Z',finished_at:'2026-01-01T12:01:30Z'});
       if (!timing.includes('1m 30s')) throw new Error('Completed duration failed');
+      if (timing.includes('\\n')) throw new Error('Wide timing should be one line');
+      const narrow=actionTiming({state:'success',started_at:'2026-01-01T12:00:00Z',finished_at:'2026-01-01T12:01:30Z'},Date.now(),false);
+      if (!narrow.split('\\n')[1].startsWith('Duration:')) throw new Error('Narrow timing must put duration first on second line');
       const live=actionTiming({state:'running',started_at:'2026-01-01T12:00:00Z'},Date.parse('2026-01-01T12:00:10Z'));
       if (!live.includes('Elapsed: 10s')) throw new Error('Live duration failed');
       if (actionStatus('queued') !== 'waiting') throw new Error('Queued status failed');

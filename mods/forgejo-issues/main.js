@@ -167,6 +167,10 @@ export default class Issues extends View {
     this.page = Math.min(this.page ?? 0, pageCount - 1);
     const visibleRows = rows.slice(this.page * 20, (this.page + 1) * 20);
     return v_flex().id("forgejo-issues").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background)
+      .on_size_change((size, cx) => {
+        const wide = size.width >= 640;
+        if (this.kind === "actions" && this.wideTiming !== wide) { this.wideTiming = wide; cx.notify(); }
+      })
       .border_1().border_color(t.border).text_color(t.foreground).text_size(12)
       .child(h_flex().h(42).flex_none().px(10).gap(8).items_center()
         .child(div().flex_1().font_semibold().child("Forgejo " + this.title))
@@ -202,7 +206,7 @@ export default class Issues extends View {
           .on_click((_e, cx) => this.open(i, cx))
           .child(div().text_color(this.kind === "actions" ? this.statusColor(i.state, t) : t.foreground).child(`#${i.number}  ${i.title}`))
           .when(Boolean(i.detail), el => el.child(div().text_color(t.muted).text_size(11).child(i.detail)))
-          .when(this.kind === "actions", el => el.child(div().text_color(t.muted).text_size(11).child(actionTiming(i))))
+          .when(this.kind === "actions", el => el.child(div().text_color(t.muted).text_size(11).child(actionTiming(i, Date.now(), this.wideTiming !== false))))
           .child(h_flex().flex_wrap().gap(6).items_center().text_size(11)
             .child(div().px(7).py(2).rounded(10).border_1().border_color(this.statusColor(i.state, t))
               .text_color(this.statusColor(i.state, t)).child(i.state))
@@ -234,12 +238,14 @@ export function compareIssues(a, b, field, direction) {
 export function actionStatus(state) {
   return state === "in_progress" ? "running" : ["queued", "pending"].includes(state) ? "waiting" : state === "failed" ? "failure" : state === "canceled" ? "cancelled" : state;
 }
-export function actionTiming(item, now = Date.now()) {
+export function actionTiming(item, now = Date.now(), wide = true) {
   const timestamp = value => { const n = Date.parse(value ?? ""); return Number.isFinite(n) && n > 0 ? n : null; };
   const start = timestamp(item.started_at), finish = timestamp(item.finished_at);
   const format = n => n ? new Date(n).toISOString().replace('T', ' ').replace('.000Z', ' UTC') : '—';
   const running = actionStatus(item.state) === 'running';
   const seconds = start && (finish || running) ? Math.max(0, Math.floor(((finish ?? now) - start) / 1000)) : item.duration_seconds > 0 ? Math.floor(item.duration_seconds) : null;
   const duration = seconds === null ? '—' : seconds >= 3600 ? `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m ${seconds % 60}s` : seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
-  return `Started: ${format(start)}\nFinished: ${format(finish)} · ${running ? 'Elapsed' : 'Duration'}: ${duration}`;
+  const elapsed = `${running ? 'Elapsed' : 'Duration'}: ${duration}`;
+  return wide ? `Started: ${format(start)} · Finished: ${format(finish)} · ${elapsed}`
+    : `Started: ${format(start)}\n${elapsed} · Finished: ${format(finish)}`;
 }
