@@ -1,4 +1,4 @@
-# Forgejo Issues for Herdr
+# Herdr Forgejo
 
 A compact, read-only Forgejo browser for Herdr's side panel, with separate Issues, Pull Requests and Actions mods.
 
