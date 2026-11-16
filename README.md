@@ -6,6 +6,7 @@ A compact, read-only Forgejo issue browser for Herdr's side panel.
 
 - Follows the focused terminal's repository, including worktrees and remote Unix spaces.
 - Open, closed and all issues; text search; 20 issues per page.
+- Sort by issue number, creation date or modification date, ascending or descending. Defaults to most recently modified; sorting applies before pagination.
 - Click a tag to cycle **✓ include → ✕ exclude → unfiltered**. Filters combine.
 - Ready labels are green, In Progress blue and Refinement red.
 - Click an issue to open it in your default browser.

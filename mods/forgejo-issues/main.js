@@ -18,6 +18,7 @@ function labelColor(label, t) {
 export default class Issues extends View {
   init(_p, cx) {
     this.state = "open"; this.tags = new Map();
+    this.sortBy = "updated_at"; this.sortDirection = "desc";
     this.search = InputState.new({ placeholder: "Search issues..." });
     this.search.on("change", (_e, cx) => cx.notify());
     this.error = null;
@@ -107,10 +108,10 @@ export default class Issues extends View {
     const rows = (this.data?.issues ?? []).filter(i => (this.state === "all" || i.state === this.state)
       && [...this.tags].every(([label, mode]) => mode === "include" ? i.labels.includes(label) : !i.labels.includes(label))
       && `${i.number} ${i.title} ${i.labels.join(' ')} ${i.assignees.join(' ')}`.toLowerCase().includes(query))
-      .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''));
+      .sort((a, b) => compareIssues(a, b, this.sortBy ?? "updated_at", this.sortDirection ?? "desc"));
     // Bound native element creation: large repositories can otherwise exceed
     // Herdr's per-render execution budget when every issue is built eagerly.
-    const filterKey = JSON.stringify([this.locationKey, query, this.state, [...this.tags]]);
+    const filterKey = JSON.stringify([this.locationKey, query, this.state, [...this.tags], this.sortBy, this.sortDirection]);
     if (filterKey !== this.filterKey) { this.filterKey = filterKey; this.page = 0; }
     const pageCount = Math.max(1, Math.ceil(rows.length / 20));
     this.page = Math.min(this.page ?? 0, pageCount - 1);
@@ -126,6 +127,12 @@ export default class Issues extends View {
           cx => { this.state = state; cx.notify(); }, this.state === state)))
         .child(div().flex_1().min_w(0).px(8).rounded(12).border_1().border_color(t.foreground).bg(t.raised)
           .child(Input.new(this.search).h(28).text_size(12).text_color(t.foreground))))
+      .child(h_flex().px(8).pb(7).gap(5).items_center().flex_wrap().flex_none()
+        .child(div().text_color(t.muted).child("Sort"))
+        .children([["number", "#"], ["created_at", "Created"], ["updated_at", "Modified"]].map(([field, label]) =>
+          this.button(`sort-${field}`, label, cx => { this.sortBy = field; cx.notify(); }, (this.sortBy ?? "updated_at") === field)))
+        .child(this.button("sort-direction", (this.sortDirection ?? "desc") === "asc" ? "↑ ASC" : "↓ DESC",
+          cx => { this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc"; cx.notify(); })))
       .when(labels.length > 0, el => el.child(v_flex().px(8).pb(8).gap(6).flex_none().id("tag-filters")
         .child(h_flex().flex_none().items_center().gap(8).child(div().text_color(t.muted).child("Tags · ✓ include · ✕ exclude"))
           .when(this.tags.size > 0, el => el.child(this.button("clear-tags", "Clear", cx => { this.tags.clear(); cx.notify(); }))))
@@ -155,4 +162,10 @@ export default class Issues extends View {
           .child(`${rows.length ? this.page * 20 + 1 : 0}–${Math.min((this.page + 1) * 20, rows.length)} / ${rows.length}${this.data?.limited ? '+' : ''}`))
         .when(pageCount > 1, el => el.child(this.button("next-page", "Next", cx => { this.page = Math.min(pageCount - 1, this.page + 1); cx.notify(); }))));
   }
+}
+
+export function compareIssues(a, b, field, direction) {
+  const value = issue => field === "number" ? Number(issue.number) || 0 : Date.parse(issue[field] ?? "") || 0;
+  const difference = value(a) - value(b) || (Number(a.number) || 0) - (Number(b.number) || 0);
+  return direction === "asc" ? difference : -difference;
 }

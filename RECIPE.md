@@ -10,7 +10,7 @@ Top to bottom: a 42px title row with Refresh, repository name, one row of rounde
 
 ## How it behaves
 
-Always show repository-wide issues; branch names never restrict issues. Search covers number, title, labels and assignees. Tag clicks cycle neutral → include (✓) → exclude (✕) → neutral; combine all requirements. Clear removes tag filters. Issue badges toggle filters without opening the browser; clicking a card opens its Forgejo page. Refresh every 30 seconds while the side panel is visible; preserve cached data on a failed refresh. Fetching is read-only. There is no special display for agent working/blocked/done/idle states.
+Always show repository-wide issues; branch names never restrict issues. Search covers number, title, labels and assignees. Sort controls choose number, Created or Modified plus ASC/DESC, defaulting to Modified DESC. Sort all filtered issues before slicing the page and reset to page one when sort changes; compare dates as timestamps and break ties by issue number. Tag clicks cycle neutral → include (✓) → exclude (✕) → neutral; combine all requirements. Clear removes tag filters. Issue badges toggle filters without opening the browser; clicking a card opens its Forgejo page. Refresh every 30 seconds while the side panel is visible; preserve cached data on a failed refresh. Fetching is read-only. There is no special display for agent working/blocked/done/idle states.
 
 ## Built from
 

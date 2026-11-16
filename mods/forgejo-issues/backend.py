@@ -102,7 +102,7 @@ def issues(ctx, token):
         for row in rows:
             if row.get('pull_request'):
                 continue
-            result.append({k: row.get(k) for k in ('number', 'title', 'state', 'html_url', 'updated_at')}
+            result.append({k: row.get(k) for k in ('number', 'title', 'state', 'html_url', 'created_at', 'updated_at')}
                           | {'labels': [x.get('name', '') for x in row.get('labels', [])],
                              'assignees': [x.get('login', '') for x in row.get('assignees') or []]})
         if not rows or ('rel="next"' not in headers.get('Link', '') and len(rows) < 50):
