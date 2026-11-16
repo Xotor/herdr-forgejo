@@ -152,7 +152,7 @@ export default class Issues extends View {
       cx.spawn(async cx => { this.search.set_value(""); cx.notify(); });
     }
     const query = this.search.value().toLowerCase(), items = this.data?.[this.kind] ?? [];
-    const labels = this.kind === "actions" ? [] : [...new Set([...(this.data?.labels ?? []), ...items.flatMap(i => i.labels)])].sort((a, b) => a.localeCompare(b));
+    const labels = this.kind !== "issues" ? [] : [...new Set([...(this.data?.labels ?? []), ...items.flatMap(i => i.labels)])].sort((a, b) => a.localeCompare(b));
     const states = this.kind === "actions" ? [...new Set(["all", "running", "success", "failure", "waiting", "cancelled", ...items.map(i => actionStatus(i.state))])] : this.kind === "prs" ? ["open", "draft", "merged", "closed", "all"] : ["open", "closed", "all"];
     const rows = items.filter(i => (this.kind === "actions" ? !this.actionStates.size || this.actionStates.has(actionStatus(i.state)) : this.state === "all" || i.state === this.state)
       && (!this.related || (i.links ?? []).some(l => l.kind === this.related.fromKind && l.number === this.related.fromNumber))
@@ -210,7 +210,7 @@ export default class Issues extends View {
           .child(h_flex().flex_wrap().gap(6).items_center().text_size(11)
             .child(div().px(7).py(2).rounded(10).border_1().border_color(this.statusColor(i.state, t))
               .text_color(this.statusColor(i.state, t)).child(i.state))
-            .children(i.labels.map(label => {
+            .children((this.kind === "issues" ? i.labels : []).map(label => {
               const color = labelColor(label, t);
               return div().id(`issue-${i.number}-tag-${label}`).px(7).py(2).rounded(10).border_1().border_color(color).text_color(color).child(label)
                 .on_click((_e, cx) => { cx.stop_propagation(); this.toggleTag(label, cx); });
